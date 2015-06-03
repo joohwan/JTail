@@ -1,0 +1,53 @@
+package jtail.logic.search;
+
+public class SearchWord {
+	private final String stringToSearch;
+	private final boolean caseSensitive;
+	private final boolean wholeWord;
+	private final boolean regExSearch;
+
+	public String getStringToSearch() {
+		return stringToSearch;
+	}
+
+	public boolean isCaseSensitive() {
+		return caseSensitive;
+	}
+
+	public boolean isWholeWord() {
+		return wholeWord;
+	}
+
+	public boolean isRegExSearch() {
+		return regExSearch;
+	}
+
+	public SearchWord(boolean caseSensitive, boolean regExSearch, String stringToSearch, boolean wholeWord) {
+		this.stringToSearch = stringToSearch;
+		this.caseSensitive = caseSensitive;
+		this.wholeWord = wholeWord;
+		this.regExSearch = regExSearch;
+	}
+	
+	public boolean equals(Object o) {
+		if (o == this) {
+			return true;
+		}
+		if (!(o instanceof SearchWord)) {
+			return false;
+		}
+		SearchWord sc = (SearchWord) o;
+		return (sc.caseSensitive == this.caseSensitive && sc.regExSearch == this.regExSearch
+				&& sc.wholeWord == this.wholeWord && sc.stringToSearch.equals(this.stringToSearch));
+
+	}
+
+	public int hashCode() {
+		int result = 17;
+		result = 37 * result + Boolean.valueOf(this.caseSensitive).hashCode();
+		result = 37 * result + Boolean.valueOf(this.regExSearch).hashCode();
+		result = 37 * result + Boolean.valueOf(this.wholeWord).hashCode();
+		result = 37 * result + this.stringToSearch.hashCode();
+		return result;
+	}
+}

@@ -1,0 +1,61 @@
+package jtail.logic.search;
+
+import java.util.concurrent.Callable;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import jtail.logic.Range;
+
+public class Searcher implements Callable<ViewingContentOld> {
+	private final ViewingContentOld searchContent;
+	private final SearchWord searchWord;
+	
+	public Searcher(ViewingContentOld searchContent, SearchWord searchWord) {
+		this.searchContent = searchContent;
+		this.searchWord = searchWord;
+	}
+	
+	public ViewingContentOld call() throws Exception {
+		return search();
+	}
+	
+	public ViewingContentOld search() {
+		boolean found = false;
+		int startIndex = 0;
+		int endIndex = 0;
+		String target = this.searchContent.getTextDisplayed();
+		
+		if (searchWord.isRegularExpressionSearch()) { // it means it is not whole word search.
+			int flags = Pattern.MULTILINE; //Pattern.DOTALL; //Pattern.MULTILINE;
+			if (!searchWord.isCaseSensitive()) {
+				flags = flags | Pattern.CASE_INSENSITIVE;
+			}
+			Pattern p = Pattern.compile(searchWord.getStringToFind(), flags);
+			Matcher m = p.matcher(target);
+
+			while (m.find()) {
+				found = true;
+				startIndex = m.start();
+				endIndex = m.end();
+				if (searchWord.isForwardSearch()) {
+					break;
+				}
+			}
+		} else {
+			startIndex = target.indexOf(searchWord.getStringToFind());
+			if (startIndex != -1) {
+				endIndex = startIndex + searchWord.getStringToFind().length();
+				found = true;
+			}
+		}
+				
+		if (found) {
+			Range matchRange = new Range(startIndex, endIndex - startIndex);
+			this.searchContent.setMatchRange(matchRange);
+		} else {
+			this.searchContent.setMatchRange(null);
+		}
+		
+		return this.searchContent;
+	}
+}

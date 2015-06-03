@@ -1,0 +1,91 @@
+package jtail.logic.search;
+
+import jtail.logic.Range;
+
+public class ViewingContentOld {	
+	public static final ViewingContentOld USER_WANT_TO_STOP_SEARCH = new ViewingContentOld(null, null);
+	
+	private FileRange fileRange;	
+	
+	/*
+	 * textDisplayed is not aligned to fileRange. If there are filters used, fileRange is
+	 * much bigger than textDisplayed.
+	 */
+	private String textDisplayed;
+	
+	private boolean matchFound = false;
+	private Range matchRange = null;
+	
+	public ViewingContentOld(FileRange fileRange, String textDisplayed) {
+		super();
+		this.fileRange = fileRange;
+		this.textDisplayed = textDisplayed;
+	}
+
+	public FileRange getFileRange() {
+		return fileRange;
+	}
+
+	public void setFileRange(FileRange fileRange) {
+		this.fileRange = fileRange;
+	}
+	
+	public String getTextDisplayed() {
+		return textDisplayed;
+	}
+
+	public void setTextDisplayed(String textDisplayed) {
+		this.textDisplayed = textDisplayed;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((fileRange == null) ? 0 : fileRange.hashCode());
+		result = prime * result
+				+ ((textDisplayed == null) ? 0 : textDisplayed.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		ViewingContentOld other = (ViewingContentOld) obj;
+		if (fileRange == null) {
+			if (other.fileRange != null)
+				return false;
+		} else if (!fileRange.equals(other.fileRange))
+			return false;
+		if (textDisplayed == null) {
+			if (other.textDisplayed != null)
+				return false;
+		} else if (!textDisplayed.equals(other.textDisplayed))
+			return false;
+		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "SearchContent [fileRange=" + fileRange  
+				+ ", textToBeSearchedAgainst=" + textDisplayed + "]";
+	}
+
+	public boolean isMatchFound() {
+		return (this.matchRange != null);
+	}
+	
+	public Range getMatchRange() {
+		return matchRange;
+	}
+
+	public void setMatchRange(Range matchRange) {
+		this.matchRange = matchRange;
+	}
+	
+}

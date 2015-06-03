@@ -1,0 +1,64 @@
+package jtail.logic.search;
+
+import java.util.concurrent.Callable;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import jtail.log.MyLogger;
+import jtail.util.FileUtil;
+
+public class SearcherOld implements Callable<FileRange> {
+	private final FileRange fileRange;
+	private final SearchWord searchWord;
+	
+	public SearcherOld(FileRange fileRange, SearchWord searchWord) {
+		this.fileRange = fileRange;
+		this.searchWord = searchWord;
+	}
+	
+	public FileRange call() throws Exception {
+		String target = FileUtil.readFile(fileRange.getFile(), fileRange.getStartIndex(), 
+				fileRange.getLength());
+		FileRange range = search(target);
+		return range;
+	}
+	
+	public FileRange search(String target) {
+		boolean found = false;
+		int startIndex = 0;
+		int endIndex = 0;
+		
+		if (searchWord.isRegularExpressionSearch()) { // it means it is not whole word search.
+			int flags = Pattern.MULTILINE; //Pattern.DOTALL; //Pattern.MULTILINE;
+			if (!searchWord.isCaseSensitive()) {
+				flags = flags | Pattern.CASE_INSENSITIVE;
+			}
+			Pattern p = Pattern.compile(searchWord.getStringToFind(), flags);
+			Matcher m = p.matcher(target);
+
+			while (m.find()) {
+				found = true;
+				startIndex = m.start();
+				endIndex = m.end();
+				if (searchWord.isForwardSearch()) {
+					break;
+				}
+			}
+		} else {
+			startIndex = target.indexOf(searchWord.getStringToFind());
+			if (startIndex != -1) {
+				endIndex = startIndex + searchWord.getStringToFind().length();
+				found = true;
+			}
+		}
+
+		if (found) {		
+			MyLogger.debug("Searcher.search(), found at ("+startIndex+","+endIndex+") => "+
+					"("+(fileRange.getStartIndex()+startIndex)+
+					","+(fileRange.getStartIndex()+endIndex)+")");
+			return new FileRange(fileRange.getFile(), fileRange.getStartIndex()+startIndex, endIndex - startIndex);
+		} else {
+			return FileRange.EMPTY_RANGE;
+		}
+	}
+}

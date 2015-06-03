@@ -1,0 +1,74 @@
+package jtail.logic.search;
+
+import jtail.config.Config;
+import jtail.execute.GuiExecutor;
+import jtail.log.MyLogger;
+import jtail.ui.tab.TailTab;
+
+/**
+ * This class enables automatic resumption of tailing.
+ * Tailing stops if user performs search to help user keeps searching
+ * without being interrupted by automatic scrolling of tailing area. 
+ * @author joohwan oh, 2009-08-20
+ */
+public class SearchMonitor extends Thread {
+	private final TailTab tailTab;
+	private long lastTimeSearchDone;
+	private volatile boolean threadSuspended = false;
+	
+	public synchronized boolean isThreadSuspended() {
+		return threadSuspended;
+	}
+
+	public synchronized void setThreadSuspended(boolean threadSuspended) {
+		this.threadSuspended = threadSuspended;
+	}
+
+	public SearchMonitor(TailTab tailTab){
+		this.tailTab = tailTab;
+	}
+	
+	/* (non-Javadoc)
+	 * If specified time has passed since last search,
+	 * resume tailing.
+	 * @see java.lang.Thread#run()
+	 */
+	public void run() {
+		while (true) {
+			long currentTime = System.currentTimeMillis();
+			long autoTailResumeMills = Config.bean.getAutoTailResumeSeconds() * 1000;
+			
+			// if it passed resume-time, resume tail and suspend this thread.
+			if ((currentTime - this.getLastTimeSearchDone()) > autoTailResumeMills){
+				setThreadSuspended(true);
+				GuiExecutor.getInstance().execute(new Runnable() {
+					public void run() {
+						tailTab.checkStopTailButton(false);
+					}
+				});
+				
+				while (this.isThreadSuspended()){
+					try {
+						Thread.sleep(1000);
+					} catch (InterruptedException e){
+						MyLogger.log("SearchMonitor thread was interrupted.", e);
+					}	
+				}				
+			} else {
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e){
+					MyLogger.log("SearchMonitor thread was interrupted.", e);
+				}
+			}
+		}		
+	}
+
+	public synchronized void updateSearchTime() {
+		this.lastTimeSearchDone = System.currentTimeMillis();		
+	}	
+	
+	public synchronized long getLastTimeSearchDone(){
+		return this.lastTimeSearchDone;
+	}
+}

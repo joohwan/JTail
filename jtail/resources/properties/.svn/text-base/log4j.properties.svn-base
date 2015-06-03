@@ -1,0 +1,27 @@
+# console appender
+#log4j.rootLogger=DEBUG, stdoutAppender
+#log4j.appender.stdoutAppender=org.apache.log4j.ConsoleAppender
+#log4j.appender.stdoutAppender.layout=org.apache.log4j.PatternLayout
+#log4j.appender.stdoutAppender.layout.ConversionPattern=[%-5p:%C.%M()] %m%n
+#log4j.logger.first=DEBUG
+
+# file appender
+#log4j.rootLogger=DEBUG, fileAppender
+#log4j.appender.fileAppender=org.apache.log4j.FileAppender
+#log4j.appender.fileAppender.File=JTail.log
+#log4j.appender.fileAppender.layout=org.apache.log4j.PatternLayout
+#log4j.appender.fileAppender.layout.ConversionPattern=[%-5p:%C.%M()] %m%n
+#log4j.logger.first=DEBUG
+
+# rolling file appender
+log4j.rootLogger=DEBUG, R
+log4j.appender.R=org.apache.log4j.RollingFileAppender
+log4j.appender.R.File=JTail.log
+log4j.appender.R.MaxFileSize=1024KB
+# no backup file, 1MB is big enough.
+log4j.appender.R.MaxBackupIndex=0
+log4j.appender.R.layout=org.apache.log4j.PatternLayout
+#log4j.appender.R.layout.ConversionPattern=[%d{yyyy-MM-dd HH:mm:ss}] %m%n
+log4j.appender.R.layout.ConversionPattern=%m%n
+
+

@@ -1,0 +1,520 @@
+package jtail.logic.search;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.SortedSet;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import jtail.config.Config;
+import jtail.log.MyLogger;
+import jtail.logic.FileBlockHandler;
+import jtail.logic.FileBlock;
+import jtail.ui.dialog.DialogUtil;
+import jtail.ui.tab.TailTab;
+import jtail.ui.tab.pane.DisplayTriggerAction;
+import jtail.util.FileUtil;
+
+import org.eclipse.jface.text.DocumentEvent;
+import org.eclipse.jface.text.IDocumentListener;
+
+public final class OldSearchHandler implements IDocumentListener {
+	private static final int MINIMUM_START_OFFSET = 0;
+	
+	private int searchStartOffset = MINIMUM_START_OFFSET;
+	private SearchWord prevSearchWord = null;
+	private int prevMatchLength = 0;
+	private TailTab tailTab = null;
+
+	private static SortedSet<String> searchWordSet = Config.bean.getSearchWordSet();;
+
+	public OldSearchHandler(TailTab tailTab) {
+		//this.textViewer = text;
+		this.tailTab = tailTab;
+		// this.frdAdapter = new FindReplaceDocumentAdapter(text.getDocument());
+	}
+	
+	public void search(SearchWord searchWord) {
+		stopTail();
+		//startAutomaticTailStopCancelHandler(tailTab);
+		updateSearchCombo(searchWord);
+		adjustStartOffset(searchWord);
+		
+		MyLogger.debug("SearchHandler.search(), search word:" + searchWord+
+				", searchStartOffset:"+this.searchStartOffset+
+				", fileLength:"+this.getFileLength());
+		
+		ExecutorService executorService = Executors.newCachedThreadPool();
+		List<FileRange> fileRangeList = this.getFileBlockHandler().getFileRangeList(
+				searchWord.isForwardSearch(), this.searchStartOffset);
+		MyLogger.debug("fileRangeList:" + fileRangeList);
+		List<Future<FileRange>> resultList = new ArrayList<Future<FileRange>>();
+		
+		for (int i = 0; i < fileRangeList.size(); i++) {
+			resultList.add(executorService.submit(new SearcherOld(fileRangeList.get(i), searchWord)));
+		}
+		
+		boolean found = false;
+		boolean cancelled = false;
+		FileRange matchRange = FileRange.EMPTY_RANGE;
+		int cancelledTask = 0;
+		//for (Future<SubDocument> result : resultList){
+		for (int i = 0; i < resultList.size(); i++) {
+			if (found){
+				cancelled = resultList.get(i).cancel(true);				
+				if (cancelled) {
+					MyLogger.debug("cancelled at result index:"+i);
+					cancelledTask++;
+				}
+			} else {
+				try {
+					matchRange = resultList.get(i).get();
+				} catch (InterruptedException e) {
+					DialogUtil.displayErrorDialog(e);
+					return;
+				} catch (ExecutionException e) {
+					DialogUtil.displayErrorDialog(e);
+					return;
+				}
+				if (!matchRange.equals(FileRange.EMPTY_RANGE)){
+					MyLogger.debug("found at result index:"+i);
+					found = true;
+				} else {
+					MyLogger.debug("not found at result index:"+i);
+				}
+			}			
+		}
+		
+		MyLogger.debug("number of cancelled search task:"+cancelledTask);
+		
+		if (found){
+			tailTab.reflectSearchResultToUI(true);
+		} else {
+			tailTab.reflectSearchResultToUI(false);
+			return;
+		}
+				
+		FileBlock viewingBlock = displayMatch(searchWord, matchRange);
+		updateSearchStartOffset(searchWord.isForwardSearch(), viewingBlock);
+		updatePrevMatchInfo(searchWord, viewingBlock);		
+	}
+	
+	private FileBlock displayMatch(SearchWord searchWord, FileRange matchRange) {
+		int matchOffsetInFile = matchRange.getStartIndex();
+		String blockToDisplay = "";
+		int blockStartIndexInFile = 0;
+		int matchOffsetInBlock = 0;
+		int blockSize = 0;
+		int fileLength = this.getFileLength();
+		
+		if (FileBlockHandler.getHalfBlockSize() <= matchOffsetInFile) {
+			blockStartIndexInFile = matchOffsetInFile - FileBlockHandler.getHalfBlockSize();
+			matchOffsetInBlock = FileBlockHandler.getHalfBlockSize();
+			if (blockStartIndexInFile + FileBlockHandler.getBlockSize() <= fileLength) {
+				blockSize = FileBlockHandler.getBlockSize();
+			} else {
+				blockSize = fileLength - blockStartIndexInFile;
+			}
+			blockToDisplay = FileUtil.readFile(this.tailTab.getFile(), blockStartIndexInFile, 
+					blockSize);
+		} else {
+			blockStartIndexInFile = 0;
+			matchOffsetInBlock = matchOffsetInFile;
+			if (blockStartIndexInFile + FileBlockHandler.getBlockSize() <= fileLength) {
+				blockSize = FileBlockHandler.getBlockSize();
+			} else {
+				blockSize = fileLength - blockStartIndexInFile;
+			}
+			blockToDisplay = FileUtil.readFile(this.tailTab.getFile(), 0, blockSize);
+		}
+		
+		//Searcher searcher = new Searcher(matchRange, searchWord);
+		
+		
+//		FileBlock doc = new FileBlock(blockToDisplay, blockStartIndexInFile,
+//				matchOffsetInBlock, matchRange.getLength());
+//		this.tailTab.redrawViewArea(doc, DisplayTriggerAction.SEARCH_EXECUTED);
+		return null;
+	}
+	
+	private void updateSearchStartOffset(boolean isForwardSearch, FileBlock block) {
+//		int offset = block.getSearchMatchIndexInFile();
+//		int length = block.getSearchMatchLength();
+//		if (isForwardSearch) {
+//			this.setStartOffset(offset + length);
+//		} else {
+//			this.setStartOffset(offset);
+//		}
+	}
+	
+	private void updatePrevMatchInfo(SearchWord searchWord, FileBlock block) {
+		// save current search word to be compared to next search word.
+		this.prevSearchWord = new SearchWord(searchWord);
+//		this.prevMatchLength = block.getSearchMatchLength();
+	}
+
+	private void setDefaultStartOffset(boolean isForwardSearch) {
+		if (isForwardSearch) {
+			setMinimumStartOffset();
+			// this.getViewPortChangeHandler().displayFirstBlock();
+		} else {
+			setMaximumStartOffset();
+			// this.getViewPortChangeHandler().displayLastBlock();
+		}
+	}
+
+	public void setMinimumStartOffset() {
+		this.setStartOffset(MINIMUM_START_OFFSET);
+	}
+
+	public void setMaximumStartOffset() {
+		// this.setStartOffset(getDocumentLength() - 1);
+		this.setStartOffset(this.getFileLength());
+	}
+
+//	private int getDocumentLength() {
+//		return textViewer.getDocument().getLength();
+//	}	
+
+	private void updateSearchCombo(SearchWord searchWord) {
+		if (!searchWordSet.contains(searchWord.getStringToFind())){
+			searchWordSet.add(searchWord.getStringToFind());	
+		}		
+	}
+
+	private void stopTail() {
+		// stop current tail if it was not stopped already for search.
+		if (tailTab.isTailRunning()) {
+			//tailTab.checkStopTailButton(true);
+			tailTab.pauseTail();
+		}
+	}
+
+	private void adjustStartOffset(SearchWord searchWord) {
+		if (!searchWord.equalsStringToFind(prevSearchWord)) {
+			// if search word was changed, set start offset to the end of file.
+			this.searchWordChanged(searchWord.getSearchCondition().isForwardSearch());
+		} else {
+			// if search word is same, check if search direction was changed or not.
+			if (this.prevSearchWord.isForwardSearch() != searchWord.isForwardSearch()) {
+				if (searchWord.isForwardSearch()) {
+					// from backward to forward
+					this.setStartOffset(this.searchStartOffset + this.prevMatchLength);
+				} else {
+					// from forward to backward
+					this.setStartOffset(this.searchStartOffset - this.prevMatchLength);
+				}
+			}
+		}
+	}
+	
+	
+	
+
+	private void startAutomaticTailStopCancelHandler(TailTab tailTab) {
+		/*
+		 * Resume search monitor if it is alive in case it was suspended. Start the search monitor
+		 * if it died.
+		 */
+		AutomaticTailStopCancelHandler searchMonitor = tailTab.getSearchMonitor();
+		searchMonitor.updateSearchTime();
+		if (searchMonitor.isAlive()) {
+			if (searchMonitor.isThreadSuspended()) {
+				searchMonitor.setThreadSuspended(false);
+				MyLogger.debug("searchMonitor was resumed.");
+			}
+		} else {
+			searchMonitor.start();
+			MyLogger.debug("searchMonitor is not alive so started it.");
+		}
+	}
+
+	/**
+	 * Clear previous search information and set startoffset to the end of file for the new search.
+	 */
+	private void searchWordChanged(boolean isForwardSearch) {
+		MyLogger.debug("searchWordChanged(), isForwardSearch:"+isForwardSearch);
+		// clear previous search information.
+		this.prevSearchWord = null;
+		this.prevMatchLength = 0;
+		
+		// if new search has begun, set startoffset according to search direction.
+		this.setDefaultStartOffset(isForwardSearch);		
+	}
+	
+	
+
+	// getter, setter
+
+	/**
+	 * Set startOffset. If new offset is out of legal range, adjust it.
+	 * 
+	 * @param offset
+	 *            new offset
+	 */
+	public void setStartOffset(int offset) {
+		if (offset < 0) {
+			offset = 0;
+		} else if (offset > getFileLength()) {
+			offset = getFileLength();
+		}
+		this.searchStartOffset = offset;
+		MyLogger.debug("setStartOffset():"+this.searchStartOffset);
+	}
+
+	public void documentAboutToBeChanged(DocumentEvent event) {
+
+	}
+
+	public void documentChanged(DocumentEvent event) {
+		//this.resetStartOffsetToEnd(event.getDocument());
+	}
+
+//	public void resetStartOffsetToEnd(IDocument doc) {
+//		this.setStartOffset(doc.getLength() - 1);
+//	}
+
+	public TailTab getTailTab() {
+		return tailTab;
+	}
+
+//	private ViewPortChangeHandler getViewPortChangeHandler() {
+//		return this.tailTab.getViewPortChangeHandler();
+//	}
+//
+//	private ViewingBlock searchFile(SearchWord searchWord, int offsetInFile, int length) {
+//		if (offsetInFile < 0 || length <= 0 || searchWord == null) {
+//			return ViewingBlock.EMPTY_BLOCK;
+//		}
+//
+//		boolean found = false;
+//		int startIndex = 0;
+//		int endIndex = 0;
+//		String target = FileUtil.readFile(this.tailTab.getFile(), offsetInFile, length);
+//
+//		if (searchWord.isRegularExpressionSearch()) { // it means it is not whole word search.
+//			int flags = Pattern.MULTILINE;
+//			if (!searchWord.isCaseSensitive()) {
+//				flags = flags | Pattern.CASE_INSENSITIVE;
+//			}
+//			Pattern p = Pattern.compile(searchWord.getStringToFind(), flags);
+//			Matcher m = p.matcher(target);
+//
+//			while (m.find()) {
+//				found = true;
+//				startIndex = m.start();
+//				endIndex = m.end();
+//				if (searchWord.isForwardSearch()) {
+//					break;
+//				}
+//			}
+//		} else {
+//			startIndex = target.indexOf(searchWord.getStringToFind());
+//			if (startIndex != -1) {
+//				endIndex = startIndex + searchWord.getStringToFind().length();
+//				found = true;
+//			}
+//		}
+//
+//		if (found) {			
+//			return new ViewingBlock(target.substring(startIndex, endIndex), offsetInFile
+//					+ startIndex);
+//		} else {
+//			if (0 < offsetInFile || offsetInFile + length < this.getFileLength()) {
+//				int searchStartOffset = 0;
+//				int searchLength = 0;
+//				if (searchWord.isForwardSearch()){
+//					if (offsetInFile + length < this.getFileLength()){
+//						searchStartOffset = offsetInFile + length;
+//						searchLength = this.getFileLength() - searchStartOffset;	
+//					} else {
+//						searchStartOffset = 0;
+//						searchLength = offsetInFile;
+//					}					
+//				} else {
+//					if (0 < offsetInFile){
+//						searchStartOffset = 0;
+//						searchLength = offsetInFile;	
+//					} else {
+//						searchStartOffset = length;
+//						searchLength = this.getFileLength() - searchLength;
+//					}					
+//				}
+//				return searchFile(searchWord, searchStartOffset, searchLength);
+//			} else {
+//				/*
+//				 * if it runs from the start of the file, search failed and we don't need to search
+//				 * again.
+//				 */
+//				return ViewingBlock.EMPTY_BLOCK;
+//			}
+//		}
+//
+//	}
+
+	private int getFileLength() {
+		return this.tailTab.getFileLength();
+	}
+	
+	private FileBlockHandler getFileBlockHandler(){
+		return this.tailTab.getFileBlockHandler();
+	}
+	
+	/**
+	 * Execute the search for the current tailing document and perform UI change needed.
+	 * 
+	 * @param tailTab
+	 *            TailTab where this search was initiated.
+	 * @throws IOException
+	 */
+	// public void search(TailTab tailTab, String stringToSearch, SearchCondition searchCondition) {
+	// MyLogger.log("search condition:"+searchCondition);
+	//		
+	// /*
+	// * check if search area is cleared or not. if search area was cleared (document is empty)
+	// * then don't perform the search to prevent BadLocationException.
+	// */
+	// if (this.getDocumentLength() <= 0) {
+	// tailTab.reflectSearchResultToUI(false);
+	// return;
+	// }
+	//		
+	// // stop current tail if it was not stopped already for search.
+	// if (tailTab.isTailRunning()) {
+	// tailTab.checkStopTailButton(true);
+	// }
+	//		
+	// /*
+	// * Resume search monitor if it is alive in case it was suspended.
+	// * Start the search monitor if it died.
+	// */
+	// SearchMonitor searchMonitor = tailTab.getSearchMonitor();
+	// searchMonitor.updateSearchTime();
+	// if (searchMonitor.isAlive()) {
+	// if (searchMonitor.isThreadSuspended()){
+	// searchMonitor.setThreadSuspended(false);
+	// MyLogger.log("searchMonitor was resumed.");
+	// }
+	// } else {
+	// searchMonitor.start();
+	// MyLogger.log("searchMonitor is not alive so started it.");
+	// }
+	//		
+	// // update search word set.
+	// searchWordSet.add(stringToSearch);
+	//
+	// //this.setForwardSearch(searchOptionHandler.isForwardSearch());
+	//		
+	// /*
+	// * compare current search condition to previous search condition. If they are different,
+	// * reset startOffset to end of document.
+	// */
+	// SearchWord currentSearchWord = new SearchWord(searchCondition.isCaseSensitiveSearch(),
+	// searchCondition.isRegularExpressionSearch(), stringToSearch,
+	// searchCondition.isWholeWordSearch());
+	// if (this.prevSearchWord == null) {
+	// // new search is started.
+	//			
+	// }
+	//		
+	// if (!currentSearchWord.equals(prevSearchWord)) {
+	// // if search word was changed, set start offset to the end of file.
+	// this.searchWordChanged(searchCondition.isForwardSearch());
+	// } else {
+	// // if search word is same, check if search direction was changed or not.
+	// if (this.prevForwardSearch != searchCondition.isForwardSearch()) {
+	// if (searchCondition.isForwardSearch()) {
+	// // from backward to forward
+	// this.setStartOffset(this.startOffset + this.prevMatchLength);
+	// } else {
+	// // from forward to backward
+	// this.setStartOffset(this.startOffset - this.prevMatchLength);
+	// }
+	// }
+	// }
+	//
+	// IRegion region = null;
+	// //CursorHandler ch = new CursorHandler(this.text.getTextWidget().getShell());
+	// CursorHandler ch = new CursorHandler();
+	// try {
+	// //MyLogger.log("search start");
+	// ch.startWaitCursor();
+	// region = frdAdapter.find(startOffset, stringToSearch, searchCondition.isForwardSearch(),
+	// searchCondition.isCaseSensitiveSearch(),
+	// searchCondition.isWholeWordSearch(),
+	// searchCondition.isRegularExpressionSearch());
+	// } catch (BadLocationException ex) {
+	// throw new RuntimeException(ex);
+	// } finally {
+	// ch.stopWaitCursor();
+	// //MyLogger.log("search end");
+	// }
+	//
+	// if (region == null) { // no match
+	// if (searchCondition.isForwardSearch()) {
+	// if (this.getViewPortChangeHandler().nextBlockExist()){
+	// this.getViewPortChangeHandler().displayNextBlock();
+	// search(tailTab, stringToSearch, searchCondition);
+	// return;
+	// }
+	// } else {
+	// if (this.getViewPortChangeHandler().previousBlockExist()){
+	// this.getViewPortChangeHandler().displayPreviousBlock();
+	// search(tailTab, stringToSearch, searchCondition);
+	// return;
+	// }
+	// }
+	//			
+	// if (currentSearchWord.equals(prevSearchWord) && this.prevMatchLength > 0){
+	// /*
+	// * If there was previous match for the same search word and now it
+	// * doesn't find the match, start search from either start of the file (forward search)
+	// * or end of the file (backward search) according to search direction. This enables
+	// * circular search supported by most of editors such as UltraEdit.
+	// */
+	// setDefaultStartOffset(searchCondition.isForwardSearch());
+	// search(tailTab, stringToSearch, searchCondition);
+	// return;
+	// } else {
+	// tailTab.reflectSearchResultToUI(false);
+	// return;
+	// }
+	// } else {
+	// tailTab.reflectSearchResultToUI(true);
+	// }
+	//		
+	// // if search succeeded, display the match.
+	// int offset = region.getOffset();
+	// int length = region.getLength();
+	//		
+	// // highlight matched region.
+	// textViewer.setSelectedRange(offset, length);
+	//		
+	// // copy the match.
+	// textViewer.getTextWidget().copy();
+	//
+	// // text.setTopIndex(offset);
+	// int visibleTopLineIndex = textViewer.getTopIndex();
+	// int visibleBottomLineIndex = textViewer.getBottomIndex();
+	// int middleLineIndexFromTop = (visibleBottomLineIndex - visibleTopLineIndex) / 2;
+	// int matchLineIndex = getLineIndex(offset);
+	//
+	// // top line index after moving matched line to middle of viewport
+	// int newTopIndex = matchLineIndex - middleLineIndexFromTop;
+	// if (newTopIndex < 0) {
+	// newTopIndex = 0;
+	// }
+	//
+	// this.textViewer.setTopIndex(newTopIndex);
+	// this.updateStartOffset(searchCondition.isForwardSearch(), offset, length);
+	//
+	// // save current search word to be compared to next search word.
+	// this.prevSearchWord = currentSearchWord;
+	//
+	// // save current search direction to be compared to next search direction.
+	// this.prevForwardSearch = searchCondition.isForwardSearch();
+	// this.prevMatchLength = length;
+	// }
+}
